@@ -1,48 +1,36 @@
 {
   "expo": {
-    "name": "SwadTiffinsApp",
-    "slug": "SwadTiffinsApp",
+    "name": "Swad Tiffins",
+    "slug": "swad-tiffins",
     "version": "1.0.0",
+    "scheme": "swadtiffins",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "swadtiffinsapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FF6B2C"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "com.swadtiffins.app",
+      "permissions": [
+        "INTERNET"
+      ]
     },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+    "ios": {
+      "bundleIdentifier": "com.swadtiffins.app"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
-          "dark": {
-            "backgroundColor": "#000000"
-          }
-        }
-      ]
+      "expo-router"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "3d6da7b7-41a9-423e-90d1-73a2b78dd5f9"
+      }
     }
   }
 }
