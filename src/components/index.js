@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, TextInput, ActivityIndicator } from 'reac
 import { COLORS, AVATARS } from '../theme';
 
 export function Avatar({ name = '', size = 44, index = 0 }) {
-  const av = AVATARS[Math.abs(index) % AVATARS.length];
+  const av       = AVATARS[Math.abs(index) % AVATARS.length];
   const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.32, backgroundColor: av.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -53,7 +53,7 @@ export function FormInput({ label, theme, style, ...props }) {
 
 export function PrimaryButton({ title, onPress, color, style, loading: isLoading }) {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} disabled={isLoading}
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} disabled={!!isLoading}
       style={[{ backgroundColor: color || COLORS.primary, borderRadius: 14, padding: 14, alignItems: 'center', justifyContent: 'center' }, style]}>
       {isLoading
         ? <ActivityIndicator color="white" />
@@ -90,16 +90,12 @@ export function ErrorScreen({ message, onRetry, theme, onSeed }) {
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: T.bg, padding: 32 }}>
       <Text style={{ fontSize: 56, marginBottom: 16 }}>🔌</Text>
       <Text style={{ fontSize: 18, fontWeight: '800', color: T.text, marginBottom: 8, textAlign: 'center' }}>Cannot Connect</Text>
-      <Text style={{ fontSize: 13, color: T.text2, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
-        {message}
-      </Text>
-      <TouchableOpacity onPress={onRetry}
-        style={{ backgroundColor: COLORS.primary, borderRadius: 14, padding: 14, width: '100%', alignItems: 'center', marginBottom: 10 }}>
+      <Text style={{ fontSize: 13, color: T.text2, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>{message}</Text>
+      <TouchableOpacity onPress={onRetry} style={{ backgroundColor: COLORS.primary, borderRadius: 14, padding: 14, width: '100%', alignItems: 'center', marginBottom: 10 }}>
         <Text style={{ color: 'white', fontWeight: '800', fontSize: 15 }}>🔄 Retry</Text>
       </TouchableOpacity>
       {onSeed && (
-        <TouchableOpacity onPress={onSeed}
-          style={{ backgroundColor: COLORS.successLight, borderRadius: 14, padding: 14, width: '100%', alignItems: 'center' }}>
+        <TouchableOpacity onPress={onSeed} style={{ backgroundColor: COLORS.successLight, borderRadius: 14, padding: 14, width: '100%', alignItems: 'center' }}>
           <Text style={{ color: COLORS.successDark, fontWeight: '800', fontSize: 15 }}>🌱 Seed Default Data</Text>
         </TouchableOpacity>
       )}

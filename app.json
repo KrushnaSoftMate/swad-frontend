@@ -6,28 +6,23 @@
     "scheme": "swadtiffins",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FF6B2C"
       },
       "package": "com.swadtiffins.app",
-      "permissions": [
-        "INTERNET"
-      ]
+      "permissions": ["INTERNET"]
     },
     "ios": {
       "bundleIdentifier": "com.swadtiffins.app"
     },
-    "plugins": [
-      "expo-router"
-    ],
+    "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {
-        "origin": false
-      },
+      "router": {},
       "eas": {
         "projectId": "3d6da7b7-41a9-423e-90d1-73a2b78dd5f9"
       }
