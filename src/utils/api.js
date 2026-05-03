@@ -20,7 +20,7 @@ export const API = {
   createCustomer: (d)           => req('/customers',              { method: 'POST', body: JSON.stringify(d) }),
   updateCustomer: (id, d)       => req(`/customers/${id}`,        { method: 'PUT',  body: JSON.stringify(d) }),
   deleteCustomer: (id)          => req(`/customers/${id}`,        { method: 'DELETE' }),
-  markPayment:    (id, amt, n)  => req(`/customers/${id}/payment`,{ method: 'POST', body: JSON.stringify({ amount: amt, note: n || '' }) }),
+  markPayment:    (id, amt, n, mk) => req(`/customers/${id}/payment`,{ method: 'POST', body: JSON.stringify({ amount: amt, note: n || '', monthKey: mk }) }),
   addDate:        (id, date)    => req(`/customers/${id}/adddate`,{ method: 'POST', body: JSON.stringify({ date }) }),
   getSummary:     ()            => req('/customers/stats/summary'),
   seedDefaults:   ()            => req('/customers/seed/defaults',{ method: 'POST' }),
@@ -32,35 +32,28 @@ export const API = {
 // Supports both "10 paid, 11, 12" (group style) and "10paid, 11, 12paid" (individual style)
 export function parseCustomerDates(str) {
   if (!str || !str.trim()) return [];
-  const dates  = [];
+  const result = [];
   const tokens = str.split(',').map(t => t.trim()).filter(Boolean);
-  let   buf    = [];
+  let standaloneBuffer = [];
+
   for (const tok of tokens) {
     const lower   = tok.toLowerCase();
-    const hasPaid = lower.includes('paid');
     const nums    = tok.match(/\d+/g) || [];
-    for (const n of nums) buf.push(parseInt(n));
-    if (hasPaid) {
-      // Only mark the LAST number in buf as paid if token has a number
-      // e.g. "17 paid" → only 17 is paid
-      // e.g. "paid" alone → all buffered are paid (old group style)
-      if (nums.length > 0) {
-        // This token itself has a number + paid → only that number is paid
-        const paidNum = parseInt(nums[nums.length - 1]);
-        // Everything in buf before this number is unpaid
-        const beforePaid = buf.slice(0, buf.length - 1);
-        for (const d of beforePaid) dates.push({ date: d, paid: false });
-        dates.push({ date: paidNum, paid: true });
-      } else {
-        // "paid" standalone token → all buffered nums are paid
-        for (const d of buf) dates.push({ date: d, paid: true });
-      }
-      buf = [];
+    const hasPaid = lower.includes('paid');
+
+    if (nums.length === 0 && hasPaid) {
+      for (const d of standaloneBuffer) result.push({ date: d, paid: true });
+      standaloneBuffer = [];
+    } else if (nums.length > 0 && hasPaid) {
+      for (const d of standaloneBuffer) result.push({ date: d, paid: false });
+      standaloneBuffer = [];
+      result.push({ date: parseInt(nums[0]), paid: true });
+    } else if (nums.length > 0) {
+      for (const n of nums) standaloneBuffer.push(parseInt(n));
     }
   }
-  // Remaining buffer = unpaid
-  for (const d of buf) dates.push({ date: d, paid: false });
-  return dates;
+  for (const d of standaloneBuffer) result.push({ date: d, paid: false });
+  return result;
 }
 
 // Build rawStr back — each date is written individually so parser is unambiguous
@@ -73,12 +66,16 @@ export function buildRawStr(dates) {
   return sorted.map(d => d.paid ? `${d.date} paid` : `${d.date}`).join(', ');
 }
 
-export function calcCustomer(c) {
+export function calcCustomer(c, monthKey) {
   const dates      = parseCustomerDates(c.rawStr);
   const total      = dates.length;
   const paidCount  = dates.filter(d => d.paid).length;
   const totalAmt   = total * (c.rate || 60);
-  const paidAmt    = (paidCount * (c.rate || 60)) + (c.paidExtra || 0);
+  
+  const monthExtra = monthKey && c.paidExtraByMonth?.[monthKey] ? c.paidExtraByMonth[monthKey] : 0;
+  // Global paidExtra only applies to the current month view (or when no key provided)
+  const isCurrent  = !monthKey || monthKey === `${new Date().getFullYear()}-${new Date().getMonth() + 1}`;
+  const paidAmt    = (paidCount * (c.rate || 60)) + monthExtra + (isCurrent ? (c.paidExtra || 0) : 0);
   const dueAmt     = Math.max(0, totalAmt - paidAmt);
   const status     = dueAmt === 0 ? 'paid' : paidAmt > 0 ? 'partial' : 'due';
   return { dates, total, paidDates: paidCount, unpaidDates: total - paidCount, totalAmt, paidAmt, dueAmt, status };

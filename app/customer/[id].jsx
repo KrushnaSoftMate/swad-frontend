@@ -59,28 +59,30 @@ function buildRaw(dates) {
 // ─── Calendar ─────────────────────────────────────────────────────────────────
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
-  const now       = new Date();
-  const TODAY     = now.getDate();
-  const MONTH     = now.getMonth();
-  const YEAR      = now.getFullYear();
+function MonthCalendar({ displayDate, rawStr, offDays, onUpdate, T }) {
+  const TODAY_FULL = new Date();
+  const YEAR      = displayDate.getFullYear();
+  const MONTH     = displayDate.getMonth();
   const totalDays = new Date(YEAR, MONTH + 1, 0).getDate();
   const firstDOW  = new Date(YEAR, MONTH, 1).getDay();
-  const monthName = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const monthName = displayDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
   const [busy, setBusy] = useState(false);
 
   // Build status map fresh every render from rawStr
   const statusMap = useMemo(() => {
     const map = {};
-    parseDates(rawStr).forEach(d => { map[d.date] = d.paid ? 'paid' : 'tiffin'; });
+    parseCustomerDates(rawStr).forEach(d => { map[d.date] = d.paid ? 'paid' : 'tiffin'; });
     // Off days — shown differently
     (offDays || []).forEach(d => { if (!map[d]) map[d] = 'off'; });
     return map;
   }, [rawStr, offDays]);
 
   const handleTap = async (day) => {
-    if (day > TODAY || busy) return;
+    const isFutureMonth = displayDate > TODAY_FULL && (displayDate.getMonth() !== TODAY_FULL.getMonth() || displayDate.getFullYear() !== TODAY_FULL.getFullYear());
+    const isFutureDay = isSameMonth(displayDate, TODAY_FULL) && day > TODAY_FULL.getDate();
+    
+    if (isFutureMonth || isFutureDay || busy) return;
     const current = statusMap[day];
 
     if (current === 'off') {
@@ -92,12 +94,12 @@ function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
     setBusy(true);
     try {
       // Work on a FRESH copy of dates each time
-      const currentDates = parseDates(rawStr);
+      const currentDates = parseCustomerDates(rawStr);
 
       if (!current) {
         // Empty → add as tiffin (unpaid)
         const updated = [...currentDates, { date: day, paid: false }];
-        await onUpdate({ rawStr: buildRaw(updated) });
+        await onUpdate({ rawStr: buildRawStr(updated) });
 
       } else if (current === 'tiffin') {
         // Orange (unpaid tiffin) → mark ONLY this specific date as paid
@@ -106,7 +108,7 @@ function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
             ? { ...d, paid: true }
             : d
         );
-        await onUpdate({ rawStr: buildRaw(updated) });
+        await onUpdate({ rawStr: buildRawStr(updated) });
 
       } else if (current === 'paid') {
         // Green (paid) → ask to remove
@@ -121,7 +123,7 @@ function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
                 const updated = currentDates.map(d =>
                   d.date === day && d.paid ? { ...d, paid: false } : d
                 );
-                await onUpdate({ rawStr: buildRaw(updated) });
+                await onUpdate({ rawStr: buildRawStr(updated) });
                 setBusy(false);
               }
             },
@@ -129,7 +131,7 @@ function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
               text: '🗑️ Remove Date', style: 'destructive', onPress: async () => {
                 setBusy(true);
                 const updated = currentDates.filter(d => d.date !== day);
-                await onUpdate({ rawStr: buildRaw(updated) });
+                await onUpdate({ rawStr: buildRawStr(updated) });
                 setBusy(false);
               }
             },
@@ -185,15 +187,16 @@ function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {cells.map((day, idx) => {
           if (!day) return <View key={`e${idx}`} style={cal.cell} />;
-          const isFuture = day > TODAY;
-          const isToday  = day === TODAY;
+          const isFuture = (displayDate.getMonth() > TODAY_FULL.getMonth() && displayDate.getFullYear() >= TODAY_FULL.getFullYear()) || 
+                           (isSameMonth(displayDate, TODAY_FULL) && day > TODAY_FULL.getDate());
+          const isToday  = isSameMonth(displayDate, TODAY_FULL) && day === TODAY_FULL.getDate();
           const status   = statusMap[day];
 
           let bg     = 'transparent';
           let border = 'transparent';
           let tc     = isFuture ? T.text3 : T.text;
 
-          if (isToday && !status)       { border = COLORS.primary; tc = COLORS.primary; }
+          if (isToday && !status)       { border = COLORS.primary; tc = COLORS.primary; bg = 'rgba(255, 107, 44, 0.05)'; }
           if (status === 'tiffin')      { bg = COLORS.primaryLight;  border = COLORS.primary; tc = COLORS.primaryDark; }
           if (status === 'paid')        { bg = COLORS.successLight;  border = COLORS.success; tc = COLORS.successDark; }
           if (status === 'off')         { bg = '#F1F5F9'; border = '#94A3B8'; tc = '#64748B'; }
@@ -222,11 +225,10 @@ function MonthCalendar({ rawStr, offDays, onUpdate, T }) {
 }
 
 // ─── Off Mess Modal ────────────────────────────────────────────────────────────
-function OffMessModal({ visible, onClose, customer, onUpdate, T }) {
-  const now    = new Date();
-  const TODAY  = now.getDate();
-  const MONTH  = now.getMonth();
-  const YEAR   = now.getFullYear();
+function OffMessModal({ visible, onClose, customer, displayDate, onUpdate, T }) {
+  const TODAY_FULL = new Date();
+  const YEAR   = displayDate.getFullYear();
+  const MONTH  = displayDate.getMonth();
   const totalD = new Date(YEAR, MONTH + 1, 0).getDate();
   const firstD = new Date(YEAR, MONTH, 1).getDay();
 
@@ -234,10 +236,13 @@ function OffMessModal({ visible, onClose, customer, onUpdate, T }) {
   const [busy, setBusy] = useState(false);
 
   const toggleOff = async (day) => {
-    if (day > TODAY || busy) return;
+    const isFutureMonth = displayDate > TODAY_FULL && (displayDate.getMonth() !== TODAY_FULL.getMonth() || displayDate.getFullYear() !== TODAY_FULL.getFullYear());
+    const isFutureDay = isSameMonth(displayDate, TODAY_FULL) && day > TODAY_FULL.getDate();
+
+    if (isFutureMonth || isFutureDay || busy) return;
     setBusy(true);
     try {
-      const tiffDates = parseDates(customer.rawStr).map(d => d.date);
+      const tiffDates = parseCustomerDates(customer.rawStr).map(d => d.date);
       if (tiffDates.includes(day)) {
         Alert.alert('Cannot Mark Off', `Date ${day} is already marked as a tiffin day. Remove it from the calendar first.`);
         setBusy(false);
@@ -255,7 +260,8 @@ function OffMessModal({ visible, onClose, customer, onUpdate, T }) {
   for (let i = 0; i < firstD; i++) cells.push(null);
   for (let d = 1; d <= totalD; d++) cells.push(d);
 
-  const tiffSet = new Set(parseDates(customer.rawStr).map(d => d.date));
+  const tiffSet = new Set(parseCustomerDates(customer.rawStr).map(d => d.date));
+  const monthName = displayDate.toLocaleDateString('en-IN', { month: 'long' });
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -265,7 +271,7 @@ function OffMessModal({ visible, onClose, customer, onUpdate, T }) {
           <View style={[off.handle, { backgroundColor: T.border }]} />
           <Text style={[off.title, { color: T.text }]}>🚫 Off Mess Days</Text>
           <Text style={{ color: T.text2, fontSize: 13, marginBottom: 16 }}>
-            {customer.name} · Tap a date to mark/unmark as Off Mess
+            {customer.name} · {monthName} {YEAR}
           </Text>
 
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
@@ -292,7 +298,8 @@ function OffMessModal({ visible, onClose, customer, onUpdate, T }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {cells.map((day, i) => {
               if (!day) return <View key={`e${i}`} style={cal.cell} />;
-              const isFuture  = day > TODAY;
+              const isFuture = (displayDate.getMonth() > TODAY_FULL.getMonth() && displayDate.getFullYear() >= TODAY_FULL.getFullYear()) || 
+                               (isSameMonth(displayDate, TODAY_FULL) && day > TODAY_FULL.getDate());
               const isOff     = offDays.includes(day);
               const isTiffin  = tiffSet.has(day);
               let bg = 'transparent', border = 'transparent', tc = T.text;
@@ -327,10 +334,11 @@ function OffMessModal({ visible, onClose, customer, onUpdate, T }) {
 }
 
 // ─── Payment Modal ─────────────────────────────────────────────────────────────
-function PayModal({ visible, onClose, customer, onPay, T }) {
-  const now   = new Date();
-  const TODAY = now.getDate();
-  const MON   = now.toLocaleDateString('en-IN', { month: 'short' });
+function PayModal({ visible, onClose, customer, displayDate, onPay, T }) {
+  const TODAY_FULL = new Date();
+  const IS_CURRENT = isSameMonth(displayDate, TODAY_FULL);
+  const LIMIT_DAY = IS_CURRENT ? TODAY_FULL.getDate() : 31;
+  const MON   = displayDate.toLocaleDateString('en-IN', { month: 'short' });
 
   const [mode,  setMode]  = useState('tilnow');
   const [amt,   setAmt]   = useState('');
@@ -341,7 +349,7 @@ function PayModal({ visible, onClose, customer, onPay, T }) {
   const cl = calcCustomer(customer);
 
   // Till-now unpaid
-  const tilNowList = cl.dates.filter(d => d.date <= TODAY && !d.paid);
+  const tilNowList = cl.dates.filter(d => d.date <= LIMIT_DAY && !d.paid);
   const tilNowAmt  = tilNowList.length * customer.rate;
 
   // Custom dates
@@ -360,14 +368,14 @@ function PayModal({ visible, onClose, customer, onPay, T }) {
     try {
       if (mode === 'tilnow') {
         // Mark all unpaid tiffins up to today as paid in rawStr
-        const updated = parseDates(customer.rawStr).map(d =>
-          (d.date <= TODAY && !d.paid) ? { ...d, paid: true } : d
-        );
-        await onPay(tilNowAmt, note || `Till ${TODAY} ${MON}`, buildRaw(updated));
+        const updated = parseCustomerDates(customer.rawStr).map(d => {
+          return (d.date <= LIMIT_DAY && !d.paid) ? { ...d, paid: true } : d;
+        });
+        await onPay(tilNowAmt, note || `Till ${LIMIT_DAY} ${MON}`, buildRawStr(updated));
 
       } else if (custNums.length > 0) {
         // Mark specific entered dates as paid
-        let all = parseDates(customer.rawStr);
+        let all = parseCustomerDates(customer.rawStr);
         custNums.forEach(n => {
           const exists = all.find(d => d.date === n);
           if (exists) {
@@ -376,11 +384,11 @@ function PayModal({ visible, onClose, customer, onPay, T }) {
             all.push({ date: n, paid: true });
           }
         });
-        await onPay(custAmt, note || `Dates: ${custNums.join(', ')}`, buildRaw(all));
+        await onPay(custAmt, note || `Dates: ${custNums.join(', ')}`, buildRawStr(all));
 
       } else {
         // Just amount, no date changes
-        await onPay(parseInt(amt) || 0, note || 'Custom payment', null);
+        await onPay(parseInt(amt) || 0, note || 'Custom payment');
       }
       reset(); onClose();
       Alert.alert('✅ Payment Saved!', `₹${payAmt} recorded for ${customer.name}`);
@@ -396,7 +404,7 @@ function PayModal({ visible, onClose, customer, onPay, T }) {
           <View style={[pm.handle, { backgroundColor: T.border }]} />
           <Text style={[pm.title, { color: T.text }]}>💰 Record Payment</Text>
           <Text style={{ color: T.text2, fontSize: 13, marginBottom: 16 }}>
-            {customer.name} · Total Due: ₹{cl.dueAmt}
+            {customer.name} · {MON} Due: ₹{cl.dueAmt}
           </Text>
 
           {/* Mode tabs */}
@@ -412,7 +420,7 @@ function PayModal({ visible, onClose, customer, onPay, T }) {
           {mode === 'tilnow' ? (
             <View style={[pm.box, { backgroundColor: T.inputBg, borderColor: T.border }]}>
               <Text style={{ fontSize: 14, fontWeight: '800', color: T.text, marginBottom: 6 }}>
-                Till Today — {TODAY} {MON}
+                Till {IS_CURRENT ? 'Today' : 'End of Month'} — {IS_CURRENT ? TODAY_FULL.getDate() : 'End'} {MON}
               </Text>
               <Text style={{ fontSize: 12, color: T.text2 }}>
                 Unpaid tiffins: {tilNowList.length} × ₹{customer.rate}
@@ -493,6 +501,11 @@ function PayModal({ visible, onClose, customer, onPay, T }) {
   );
 }
 
+// Helper
+const isSameMonth = (d1, d2) => 
+  d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CustomerDetailScreen() {
   const { id }   = useLocalSearchParams();
@@ -504,24 +517,50 @@ export default function CustomerDetailScreen() {
   const c   = customers.find(x => x._id === id);
   const idx = c ? customers.indexOf(c) : 0;
 
+  const [viewDate,   setViewDate]   = useState(new Date());
   const [showPay,    setShowPay]    = useState(false);
   const [showOff,    setShowOff]    = useState(false);
   const [note,       setNote]       = useState(c?.note || '');
   const [busyNote,   setBusyNote]   = useState(false);
 
+  // Data key for storage: YYYY-MM
+  const monthKey = `${viewDate.getFullYear()}-${viewDate.getMonth() + 1}`;
+  const isTodayMonth = isSameMonth(viewDate, new Date());
+
+  // Local virtual customer for the selected month
+  const currentMonthData = useMemo(() => {
+    if (!c) return { rawStr: '', offDays: [] };
+    return {
+      rawStr: c.tiffinsByMonth?.[monthKey] || (isTodayMonth ? c.rawStr : ''),
+      offDays: c.offDaysByMonth?.[monthKey] || (isTodayMonth ? c.offDays : []),
+    };
+  }, [c, monthKey]);
+
   const handleCalUpdate = useCallback(async (updates) => {
-    await updateCustomer(c._id, updates);
-  }, [c?._id]);
+    const newTiffins = { ...(c.tiffinsByMonth || {}) };
+    const newOff     = { ...(c.offDaysByMonth || {}) };
+
+    if (updates.rawStr !== undefined) newTiffins[monthKey] = updates.rawStr;
+    if (updates.offDays !== undefined) newOff[monthKey] = updates.offDays;
+
+    const payload = { tiffinsByMonth: newTiffins, offDaysByMonth: newOff };
+
+    // Sync with legacy fields if we are updating the current month
+    if (isTodayMonth && updates.rawStr !== undefined) payload.rawStr = updates.rawStr;
+    if (isTodayMonth && updates.offDays !== undefined) payload.offDays = updates.offDays;
+
+    await updateCustomer(c._id, payload);
+  }, [c?._id, c.tiffinsByMonth, c.offDaysByMonth, monthKey, isTodayMonth, updateCustomer]);
 
   // Payment: saves amount to history + optionally updates rawStr (dates marked paid)
   const handlePay = useCallback(async (amount, noteText, newRawStr) => {
     // First record payment
-    await markPayment(c._id, amount, noteText);
+    await markPayment(c._id, amount, noteText, monthKey);
     // Then update rawStr if dates were marked paid
     if (newRawStr !== null && newRawStr !== undefined) {
-      await updateCustomer(c._id, { rawStr: newRawStr });
+      await handleCalUpdate({ rawStr: newRawStr });
     }
-  }, [c?._id]);
+  }, [c?._id, monthKey, markPayment, handleCalUpdate]);
 
   const handleSaveNote = async () => {
     setBusyNote(true);
@@ -537,7 +576,6 @@ export default function CustomerDetailScreen() {
 
   const openWA = () => {
     if (!c) return;
-    const cl  = calcCustomer(c);
     const msg = `नमस्ते ${c.name} जी! 🙏\n\n*${settings?.bizName || 'Swad Tiffins'}* से payment reminder:\n📅 तिफ़िन: *${cl.total}* | ₹${cl.totalAmt}\n✅ जमा: *₹${cl.paidAmt}*\n⏳ बकाया: *₹${cl.dueAmt}*\n\nकृपया जल्द भुगतान करें। धन्यवाद! 🍱`;
     const url = c.phone
       ? `whatsapp://send?phone=91${c.phone}&text=${encodeURIComponent(msg)}`
@@ -555,7 +593,15 @@ export default function CustomerDetailScreen() {
     </View>
   );
 
-  const cl = calcCustomer(c);
+  // IMPORTANT: We calculate stats specifically for the selected month
+  const virtualCustomer = useMemo(() => ({ 
+    ...c, 
+    rawStr: currentMonthData.rawStr, 
+    offDays: currentMonthData.offDays 
+  }), [c, currentMonthData]);
+
+  const cl = useMemo(() => calcCustomer(virtualCustomer, monthKey), [virtualCustomer, monthKey]);
+  const monthName = viewDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 
   const Sec = ({ title, children }) => (
     <View style={[s.sec, { borderBottomColor: T.border }]}>
@@ -577,6 +623,20 @@ export default function CustomerDetailScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Month Navigator */}
+      <View style={{ backgroundColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingBottom: 12, gap: 20 }}>
+        <TouchableOpacity onPress={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} style={s.navArrow}>
+          <Text style={{ color: 'white', fontWeight: '900' }}>◀</Text>
+        </TouchableOpacity>
+        <View style={{ alignItems: 'center', minWidth: 120 }}>
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: '900' }}>{monthName}</Text>
+          {isTodayMonth && <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700' }}>CURRENT MONTH</Text>}
+        </View>
+        <TouchableOpacity onPress={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} style={s.navArrow}>
+          <Text style={{ color: 'white', fontWeight: '900' }}>▶</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
 
         {/* Identity card */}
@@ -586,7 +646,7 @@ export default function CustomerDetailScreen() {
             <View style={{ flex: 1, marginLeft: 14 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: T.text }}>{c.name}</Text>
               <Text style={{ fontSize: 12, color: T.text2, marginTop: 3, lineHeight: 19 }}>
-                {c.type}{c.floor ? ' · ' + c.floor : ''}{c.phone ? '\n📱 ' + c.phone : ''}
+                {c.type}{c.floor ? ' · ' + c.floor : ''}{c.phone ? ' · ' + c.phone : ''}
               </Text>
             </View>
             <Badge status={cl.status} />
@@ -595,10 +655,10 @@ export default function CustomerDetailScreen() {
           {/* Stats */}
           <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
             {[
-              { label: 'Total',    value: `₹${cl.totalAmt}`, color: T.text },
-              { label: 'Paid',     value: `₹${cl.paidAmt}`,  color: COLORS.success },
-              { label: 'Due',      value: `₹${cl.dueAmt}`,   color: cl.dueAmt > 0 ? COLORS.danger : COLORS.success },
-              { label: 'Tiffins',  value: String(cl.total),   color: COLORS.primary },
+              { label: 'Bill',    value: `₹${cl.totalAmt}`, color: T.text },
+              { label: 'Coll.',   value: `₹${cl.paidAmt}`,  color: COLORS.success },
+              { label: 'Month Due', value: `₹${cl.dueAmt}`,   color: cl.dueAmt > 0 ? COLORS.danger : COLORS.success },
+              { label: 'Qty',     value: String(cl.total),   color: COLORS.primary },
             ].map((item, i) => (
               <View key={i} style={{ flex: 1, backgroundColor: T.inputBg, borderRadius: 12, padding: 10, alignItems: 'center' }}>
                 <Text style={{ fontSize: 9, color: T.text2, fontWeight: '700', textTransform: 'uppercase' }}>{item.label}</Text>
@@ -623,8 +683,9 @@ export default function CustomerDetailScreen() {
         {/* Calendar */}
         <Sec title="📅 TIFFIN CALENDAR">
           <MonthCalendar
-            rawStr={c.rawStr || ''}
-            offDays={c.offDays || []}
+            displayDate={viewDate}
+            rawStr={currentMonthData.rawStr}
+            offDays={currentMonthData.offDays}
             onUpdate={handleCalUpdate}
             T={T}
           />
@@ -653,17 +714,17 @@ export default function CustomerDetailScreen() {
         </Sec>
 
         {/* Off Mess summary */}
-        {(c.offDays || []).length > 0 && (
+        {(currentMonthData.offDays || []).length > 0 && (
           <Sec title="🚫 OFF MESS DAYS">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {(c.offDays || []).map(d => (
+              {(currentMonthData.offDays || []).map(d => (
                 <View key={d} style={{ backgroundColor: '#E2E8F0', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 }}>
                   <Text style={{ fontSize: 12, color: '#475569', fontWeight: '700' }}>🚫 {d}</Text>
                 </View>
               ))}
             </View>
             <Text style={{ fontSize: 11, color: T.text2 }}>
-              {(c.offDays || []).length} off day(s) this month · Not counted in billing
+              {(currentMonthData.offDays || []).length} off day(s) in {monthName}
             </Text>
           </Sec>
         )}
@@ -707,14 +768,16 @@ export default function CustomerDetailScreen() {
       <PayModal
         visible={showPay}
         onClose={() => setShowPay(false)}
-        customer={c}
+        customer={virtualCustomer}
+        displayDate={viewDate}
         onPay={handlePay}
         T={T}
       />
       <OffMessModal
         visible={showOff}
         onClose={() => setShowOff(false)}
-        customer={c}
+        customer={virtualCustomer}
+        displayDate={viewDate}
         onUpdate={handleCalUpdate}
         T={T}
       />
@@ -729,6 +792,7 @@ const s = StyleSheet.create({
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, color: 'white', fontSize: 17, fontWeight: '800' },
   editBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  navArrow: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
   identCard: { margin: 16, borderRadius: 18, borderWidth: 0.5, padding: 16 },
   actionBtn: { flex: 1, borderRadius: 12, padding: 10, alignItems: 'center' },
   sec: { paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 0.5 },
